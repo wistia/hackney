@@ -328,6 +328,8 @@ read_body(_MaxLength, Client, Acc) ->
 
 maybe_close(#client{socket=nil}) ->
   true;
+maybe_close(#client{connection= <<"close">>}) ->
+  true;
 maybe_close(#client{version={Min,Maj}, headers=Headers, clen=CLen}) ->
   Connection = hackney_bstr:to_lower(
                  hackney_headers_new:get_value(<<"connection">>, Headers, <<"">>)
@@ -347,4 +349,16 @@ close(#client{socket=nil}=Client) ->
   Client#client{state = closed};
 close(#client{transport=Transport, socket=Skt}=Client) ->
   Transport:close(Skt),
+  flush(Transport, Skt),
   Client#client{state = closed, socket=nil}.
+
+
+flush(Transport, Socket) ->
+  {Msg, MsgClosed, MsgError} = Transport:messages(Socket),
+  receive
+    {Msg, Socket, _} -> flush(Transport, Socket) ;
+    {MsgClosed, Socket} -> flush(Transport, Socket) ;
+    {MsgError, Socket, _} -> flush(Transport, Socket)
+  after 0 ->
+    ok
+  end.
